@@ -82,13 +82,34 @@ enum union NetworkPacket
 }
 ```
 
-If the enum union **only** contains variant declarations, the trailing semicolon may be omitted.
+In the second case, if the enum union **only** contains variant declarations, the trailing semicolon may be omitted.
+```d
+enum union NetworkPacket
+{
+    case Data(const(ubyte)[]),
+         Ping(ulong),
+         Reset(ushort),
+         Heartbeat(),
+         EndOfStream() // Ok
+}
+
+enum union NetworkPacket
+{
+    case Data(const(ubyte)[]),
+         Ping(ulong),
+         Reset(ushort),
+         Heartbeat(),
+         EndOfStream() // Error
+
+        void doSomething() {} 
+}
+```
 
 Each variant declaration represents one of the possible values that an enum union may take on. There are different kinds of variants that serve different functions.
 
 ## Variant Kinds
 
-### Tuple Variants
+### Tuple-like Variants
 Tuple-like variants (or "tuple variants" for short) consist of a name and a list of parameters required to construct that variant. Each parameter may be named, but it is not required. It is allowed to mix named and unnamed (positional) parameters when declaring a tuple variant:
 ```d
 enum union DrawCommand
@@ -165,14 +186,14 @@ enum union ConfigValue
 }
 ```
 
-Bare type variants must be unique within an aggregate based on their canonical base type (`toBasetype()`). Because they have no tag identifier, bare type variants are initialized via direct assignment or value conversion:
+Bare type variants must be unique within an aggregate. Because they have no tag identifier, bare type variants are initialized via direct assignment:
 ```d
 ConfigValue c = false;             // Holds variant `bool`
 c = ["some", "cool", "strings"];   // Holds variant `string[]`
 c = [["some", "cool", "strings"]]; // Error: no variant `string[][]` in enum union `ConfigValue`
 ```
 
-Target selection follows standard D overload resolution rules (`MATCH.exact > MATCH.convert`):
+Target selection follows standard D overload resolution rules:
 ```d
 enum union Nums 
 {
@@ -247,8 +268,6 @@ auto task = WorkerTask.PacketStream("eth0", [[0xAA, 0xBB], [0xCC]]);
 ```
 
 ## Enum Union Members
-Enum unions are treated as struct declarations internally, which contain a union with the declared variant cases, and a __tag value to track which variant is currently active.
-
 Like other aggregates in D, enum unions can contain members, member functions, constructors, destructors, aliases, etc.
 ```d
 enum union NetworkMessage
@@ -296,7 +315,7 @@ enum union NetworkMessage
 Inside constructors and member functions, `this` refers to the union aggregate itself, not the active variant. Member fields may be accessed via `this.<field>`. Inside constructors, definite assignment analysis ensures that `this` has been assigned a variant on all execution paths before member fields are accessed or the constructor returns.
 
 ## .init and Default Construction
-Every enum union provides an `.init` value. By default, it is the `.init` state of its first declared variant (in syntactic order). If that variant has an `@disable`'d `.init`, the `.init` value of the subsequent variant is evaluated. If all variants disable `.init`, the enum union disables `.init` as well.
+Every enum union provides an `.init` value, which is the `.init` state of its first declared variant (in syntactic order).
 ```d
 enum union Option(T)
 {
@@ -415,7 +434,7 @@ void main()
 Implicit construction only performs one level of conversion; nested sum types are not implicitly constructed across multiple levels of nesting.
 
 ## Niche Optimization (not yet implemented)
-When an enum union contains unit variants alongside non-nullable references, pointers (`T*`), or class references, the compiler can exploit invalid bit patterns to encode the unit state:
+When an enum union contains unit variants alongside non-nullable references, pointers (`T*`), or class references, the compiler can exploit invalid or unused bit patterns to encode the unit state:
 
 * `Option!(int*)`: The null pointer address `0x0` represents `None`.
 * `sizeof(Option!(int*)) == 8` (on 64-bit platforms), incurring zero byte overhead for the tag.
